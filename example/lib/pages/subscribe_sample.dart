@@ -34,7 +34,7 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
     _preferences = await SharedPreferences.getInstance();
     this.setState(() {
       _serverController.text =
-          'https://dev-rtc.radiotech.vn/rtc/v1/whep/?app=live&stream=hi2';
+          'https://dev-rtc.radiotech.vn/rtc/v1/whep/?app=live&stream=hoanglh1';
     });
   }
 
@@ -59,8 +59,6 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
     if (url.isEmpty) {
       return;
     }
-
-    // _saveSettings();
 
     _whip = WHIP(url: url);
 
@@ -178,7 +176,6 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
                 height: 10,
                 width: 10,
                 child: RTCVideoView(_remoteRenderer,
-                    mirror: false,
                     objectFit:
                         RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
               )

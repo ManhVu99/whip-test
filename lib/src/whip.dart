@@ -91,11 +91,6 @@ class WHIP {
             kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
             init: RTCRtpTransceiverInit(
                 direction: TransceiverDirection.RecvOnly));
-        await pc!.addTransceiver(
-            kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
-            init: RTCRtpTransceiverInit(
-                direction: TransceiverDirection.RecvOnly));
-        break;
     }
     log.debug('Initlize whip connection: mode = $mode, stream = ${stream?.id}');
     setState(WhipState.kInitialized);
@@ -106,15 +101,7 @@ class WHIP {
       setState(WhipState.kConnecting);
       var desc = await pc!.createOffer({});
 
-      // if (mode == WhipMode.kSend && videoCodec != null) {
-      //   setPreferredCodec(desc, videoCodec: videoCodec!);
-      // }
       await pc!.setLocalDescription(desc);
-
-      // var offer = await pc!.getLocalDescription();
-      // final sdp = offer!.sdp;
-      // log.debug('Sending offer: $sdp');
-      // print(desc.sdp);
       var respose = await httpPost(
         Uri.parse(url),
         headers: {
@@ -134,17 +121,6 @@ class WHIP {
       log.debug('Received answer: ${answer.sdp}');
       await pc!.setRemoteDescription(answer);
       setState(WhipState.kConnected);
-
-      // resourceURL = respose.headers['location'];
-      // if (resourceURL == null) {
-      //   resourceURL = url;
-      //   log.warn('Resource url not found, use $url as resource url!');
-      // } else {
-      //   if (resourceURL!.startsWith('/')) {
-      //     var uri = Uri.parse(url);
-      //     resourceURL = '${uri.origin}$resourceURL';
-      //   }
-      // }
     } catch (e) {
       log.error('connect error: $e');
       setState(WhipState.kFailure);
