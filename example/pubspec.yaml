@@ -12,8 +12,8 @@ dependencies:
     sdk: flutter
   flutter_whip:
     path: ../
-  lints: ^2.1.1
-  qr_code_scanner: ^0.7.0
+  lints: ^4.0.0
+  qr_code_scanner: ^1.0.1
   shared_preferences: ^2.0.5
 
 dev_dependencies:

@@ -35,8 +35,8 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
   void _loadSettings() async {
     _preferences = await SharedPreferences.getInstance();
     this.setState(() {
-      _serverController.text = _preferences.getString('pushserver') ??
-          'https://demo.cloudwebrtc.com:8080/whip/publish/live/stream1';
+      _serverController.text =
+          'https://dev-rtc.radiotech.vn/rtc/v1/whip/?app=live&stream=manhvv';
     });
   }
 
@@ -62,7 +62,7 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
       return;
     }
 
-    _saveSettings();
+    // _saveSettings();
 
     _whip = WHIP(url: url);
 
@@ -93,19 +93,22 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
 
     final mediaConstraints = <String, dynamic>{
       'audio': true,
-      'video': {
-        'mandatory': {
-          'minWidth': '1280',
-          'minHeight': '720',
-          'minFrameRate': '30',
-        },
-        'facingMode': 'user',
-        'optional': [],
-      }
+      // 'video': false,
+
+      // 'video': {
+      //   'mandatory': {
+      //     'minWidth': '1280',
+      //     'minHeight': '720',
+      //     'minFrameRate': '30',
+      //   },
+      //   'facingMode': 'user',
+      //   'optional': [],
+      // }
     };
 
     try {
-      var stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      var stream =
+          await navigator.mediaDevices.getUserMedia(K_LOCAL_MEDIA_CONTRAINT);
       _localStream = stream;
       _localRenderer.srcObject = _localStream;
       await _whip.initlize(mode: WhipMode.kSend, stream: _localStream);
@@ -208,11 +211,11 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
                 )
             ]),
             if (_connecting)
-              Center(
+              SizedBox(
+                height: 1,
+                width: 1,
                 child: Container(
                   margin: EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 0.0),
-                  width: MediaQuery.of(context).size.width,
-                  height: MediaQuery.of(context).size.height - 110,
                   decoration: BoxDecoration(color: Colors.black54),
                   child: RTCVideoView(_localRenderer,
                       mirror: true,

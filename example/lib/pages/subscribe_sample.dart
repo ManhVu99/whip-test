@@ -33,8 +33,8 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
   void _loadSettings() async {
     _preferences = await SharedPreferences.getInstance();
     this.setState(() {
-      _serverController.text = _preferences.getString('pullserver') ??
-          'https://demo.cloudwebrtc.com:8080/whip/subscribe/live/stream1';
+      _serverController.text =
+          'https://dev-rtc.radiotech.vn/rtc/v1/whep/?app=live&stream=hi2';
     });
   }
 
@@ -60,7 +60,7 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
       return;
     }
 
-    _saveSettings();
+    // _saveSettings();
 
     _whip = WHIP(url: url);
 
@@ -83,6 +83,7 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
             stateStr = 'Closed';
             break;
           case WhipState.kFailure:
+            print('Failure whip: \n${_whip.lastError.toString()}');
             stateStr = 'Failure: \n${_whip.lastError.toString()}';
             break;
         }
@@ -91,9 +92,7 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
     try {
       await _whip.initlize(mode: WhipMode.kReceive);
       _whip.onTrack = (event) {
-        if (event.track.kind == 'video') {
-          _remoteRenderer.srcObject = event.streams[0];
-        }
+        _remoteRenderer.srcObject = event.streams[0];
       };
       await _whip.connect();
     } catch (e) {
@@ -175,17 +174,13 @@ class _WhipSubscribeSampleState extends State<WhipSubscribeSample> {
                 )
             ]),
             if (_connecting)
-              Center(
-                child: Container(
-                  margin: EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 0.0),
-                  width: MediaQuery.of(context).size.width,
-                  height: MediaQuery.of(context).size.height - 110,
-                  decoration: BoxDecoration(color: Colors.black54),
-                  child: RTCVideoView(_remoteRenderer,
-                      mirror: false,
-                      objectFit:
-                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
-                ),
+              SizedBox(
+                height: 10,
+                width: 10,
+                child: RTCVideoView(_remoteRenderer,
+                    mirror: false,
+                    objectFit:
+                        RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
               )
           ]);
         },

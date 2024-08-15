@@ -1,7 +1,7 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+
 import 'logger.dart';
 import 'transports/http.dart' if (dart.library.html) 'transports/http_web.dart';
-import 'utils.dart';
 
 enum WhipMode {
   kSend,
@@ -16,6 +16,23 @@ enum WhipState {
   kDisconnected,
   kFailure,
 }
+
+const K_DEFAULT_BIRATE = 36000;
+const K_LOCAL_MEDIA_CONTRAINT = <String, dynamic>{
+  "audio": {
+    "channelCount": 1,
+    "echoCancellation": false, // Tắt chức năng loại bỏ tiếng vang
+    "autoGainControl": false, // Tắt chức năng giảm tiếng ồn
+    "noiseSuppression": false, // Tắt chức năng điều chỉnh âm lượng tự động
+  },
+  // "video": false
+};
+const K_OFFER_MEDIA_CONTRAINT = <String, dynamic>{
+  'mandatory': {
+    'OfferToReceiveAudio': true, // Nhận âm thanh
+    'OfferToReceiveVideo': false, // Không nhận video
+  },
+};
 
 class WHIP {
   Function(RTCTrackEvent)? onTrack;
@@ -36,28 +53,35 @@ class WHIP {
     if (pc != null) {
       return;
     }
-    if (videoCodec != null) {
-      this.videoCodec = videoCodec.toLowerCase();
-    }
-    this.mode = mode;
+
     pc = await createPeerConnection({
-      'sdpSemantics': 'unified-plan',
-      'bundlePolicy': 'max-bundle',
-      'rtcpMuxPolicy': 'require',
+      // 'sdpSemantics': 'unified-plan',
+      // 'bundlePolicy': 'max-bundle',
+      // 'rtcpMuxPolicy': 'require',
     });
+
     pc?.onIceCandidate = onicecandidate;
     pc?.onIceConnectionState = (state) {
       print('state: ${state.toString()}');
     };
+    final senders = await pc?.getSenders();
+    senders?.forEach(
+      (sender) {
+        var params = sender.parameters;
+        params.encodings?[0] = RTCRtpEncoding(
+          maxBitrate: K_DEFAULT_BIRATE,
+          maxFramerate: K_DEFAULT_BIRATE,
+        );
+        sender.setParameters(params);
+      },
+    );
     pc!.onTrack = (RTCTrackEvent event) => onTrack?.call(event);
     switch (mode) {
       case WhipMode.kSend:
         stream?.getTracks().forEach((track) async {
           await pc!.addTransceiver(
               track: track,
-              kind: track.kind == 'audio'
-                  ? RTCRtpMediaType.RTCRtpMediaTypeAudio
-                  : RTCRtpMediaType.RTCRtpMediaTypeVideo,
+              kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
               init: RTCRtpTransceiverInit(
                   direction: TransceiverDirection.SendOnly, streams: [stream]));
         });
@@ -82,42 +106,45 @@ class WHIP {
       setState(WhipState.kConnecting);
       var desc = await pc!.createOffer({});
 
-      if (mode == WhipMode.kSend && videoCodec != null) {
-        setPreferredCodec(desc, videoCodec: videoCodec!);
-      }
-
+      // if (mode == WhipMode.kSend && videoCodec != null) {
+      //   setPreferredCodec(desc, videoCodec: videoCodec!);
+      // }
       await pc!.setLocalDescription(desc);
 
-      var offer = await pc!.getLocalDescription();
-      final sdp = offer!.sdp;
-      log.debug('Sending offer: $sdp');
-      var respose = await httpPost(Uri.parse(url),
-          headers: {
-            'Content-Type': 'application/sdp',
-            if (headers != null) ...headers!
-          },
-          body: sdp);
+      // var offer = await pc!.getLocalDescription();
+      // final sdp = offer!.sdp;
+      // log.debug('Sending offer: $sdp');
+      // print(desc.sdp);
+      var respose = await httpPost(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/sdp',
+          if (headers != null) ...headers!
+        },
+        body: desc.sdp,
+      );
 
       if (respose.statusCode != 200 && respose.statusCode != 201) {
         throw Exception('Failed to send offer: ${respose.statusCode}');
       }
-
+      print("Responce" + respose.body);
       log.debug('Resource URL: $resourceURL');
       final answer = RTCSessionDescription(respose.body, 'answer');
+
       log.debug('Received answer: ${answer.sdp}');
       await pc!.setRemoteDescription(answer);
       setState(WhipState.kConnected);
 
-      resourceURL = respose.headers['location'];
-      if (resourceURL == null) {
-        resourceURL = url;
-        log.warn('Resource url not found, use $url as resource url!');
-      } else {
-        if (resourceURL!.startsWith('/')) {
-          var uri = Uri.parse(url);
-          resourceURL = '${uri.origin}$resourceURL';
-        }
-      }
+      // resourceURL = respose.headers['location'];
+      // if (resourceURL == null) {
+      //   resourceURL = url;
+      //   log.warn('Resource url not found, use $url as resource url!');
+      // } else {
+      //   if (resourceURL!.startsWith('/')) {
+      //     var uri = Uri.parse(url);
+      //     resourceURL = '${uri.origin}$resourceURL';
+      //   }
+      // }
     } catch (e) {
       log.error('connect error: $e');
       setState(WhipState.kFailure);
@@ -146,6 +173,7 @@ class WHIP {
   }
 
   void onicecandidate(RTCIceCandidate? candidate) async {
+    print(candidate?.candidate);
     if (candidate == null || resourceURL == null) {
       return;
     }
@@ -171,25 +199,25 @@ class WHIP {
     state = newState;
   }
 
-  void setPreferredCodec(RTCSessionDescription description,
-      {String audioCodec = 'opus', String videoCodec = 'vp8'}) {
-    var capSel = CodecCapabilitySelector(description.sdp!);
-    var acaps = capSel.getCapabilities('audio');
-    if (acaps != null) {
-      acaps.codecs = acaps.codecs
-          .where((e) => (e['codec'] as String).toLowerCase() == audioCodec)
-          .toList();
-      acaps.setCodecPreferences('audio', acaps.codecs);
-      capSel.setCapabilities(acaps);
-    }
-    var vcaps = capSel.getCapabilities('video');
-    if (vcaps != null) {
-      vcaps.codecs = vcaps.codecs
-          .where((e) => (e['codec'] as String).toLowerCase() == videoCodec)
-          .toList();
-      vcaps.setCodecPreferences('video', vcaps.codecs);
-      capSel.setCapabilities(vcaps);
-    }
-    description.sdp = capSel.sdp();
-  }
+  // void setPreferredCodec(RTCSessionDescription description,
+  //     {String audioCodec = 'opus', String videoCodec = 'vp8'}) {
+  //   var capSel = CodecCapabilitySelector(description.sdp!);
+  //   var acaps = capSel.getCapabilities('audio');
+  //   if (acaps != null) {
+  //     acaps.codecs = acaps.codecs
+  //         .where((e) => (e['codec'] as String).toLowerCase() == audioCodec)
+  //         .toList();
+  //     acaps.setCodecPreferences('audio', acaps.codecs);
+  //     capSel.setCapabilities(acaps);
+  //   }
+  //   var vcaps = capSel.getCapabilities('video');
+  //   if (vcaps != null) {
+  //     vcaps.codecs = vcaps.codecs
+  //         .where((e) => (e['codec'] as String).toLowerCase() == videoCodec)
+  //         .toList();
+  //     vcaps.setCodecPreferences('video', vcaps.codecs);
+  //     capSel.setCapabilities(vcaps);
+  //   }
+  //   description.sdp = capSel.sdp();
+  // }
 }
