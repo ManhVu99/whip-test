@@ -1,12 +1,12 @@
+import 'dart:async';
 import 'dart:core';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter_whip/flutter_whip.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-import 'qr_scanner.dart';
+import 'package:mic_volume/mic_volume.dart';
 
 class WhipPublishSample extends StatefulWidget {
   static String tag = 'whip_publish_sample';
@@ -16,14 +16,26 @@ class WhipPublishSample extends StatefulWidget {
 }
 
 class _WhipPublishSampleState extends State<WhipPublishSample> {
-  MediaStream? _localStream;
-  final _localRenderer = RTCVideoRenderer();
   String stateStr = 'init';
-  bool _connecting = false;
-  late WHIP _whip;
 
+  bool _connecting = false;
+  bool _isMuted = false;
+  final _localRenderer = RTCVideoRenderer();
+  MediaStream? _localStream;
   TextEditingController _serverController = TextEditingController();
-  late SharedPreferences _preferences;
+  late WHIP _whip;
+  Timer? _timer;
+  double _volumeLevel = 0.0;
+  StreamSubscription? _recorderSubscription;
+  FlutterSoundRecorder? _recorder;
+  Timer? timer;
+  final micVolumplugin = MicVolume();
+  @override
+  void deactivate() {
+    super.deactivate();
+    _localRenderer.dispose();
+    _timer?.cancel();
+  }
 
   @override
   void initState() {
@@ -32,26 +44,17 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
     _loadSettings();
   }
 
+  void initRenderers() async {
+    await _localRenderer.initialize();
+  }
+
+  void muteMic() {}
+
   void _loadSettings() async {
-    _preferences = await SharedPreferences.getInstance();
     this.setState(() {
       _serverController.text =
           'https://dev-rtc.radiotech.vn/rtc/v1/whip/?app=live&stream=manhvv';
     });
-  }
-
-  @override
-  void deactivate() {
-    super.deactivate();
-    _localRenderer.dispose();
-  }
-
-  void _saveSettings() {
-    _preferences.setString('pushserver', _serverController.text);
-  }
-
-  void initRenderers() async {
-    await _localRenderer.initialize();
   }
 
   // Platform messages are asynchronous, so we initialize in an async method.
@@ -90,29 +93,22 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
         }
       });
     };
-
-    final mediaConstraints = <String, dynamic>{
-      'audio': true,
-      // 'video': false,
-
-      // 'video': {
-      //   'mandatory': {
-      //     'minWidth': '1280',
-      //     'minHeight': '720',
-      //     'minFrameRate': '30',
-      //   },
-      //   'facingMode': 'user',
-      //   'optional': [],
-      // }
-    };
-
     try {
       var stream =
           await navigator.mediaDevices.getUserMedia(K_LOCAL_MEDIA_CONTRAINT);
+
       _localStream = stream;
+
       _localRenderer.srcObject = _localStream;
       await _whip.initlize(mode: WhipMode.kSend, stream: _localStream);
       await _whip.connect();
+      // micVolumplugin.getmicVolumplugin();
+      micVolumplugin.startCheckVolume().then((_) {
+        timer = Timer.periodic(Duration(milliseconds: 100), (e) async {
+          _volumeLevel = await micVolumplugin.getMicVolume() ?? _volumeLevel;
+          setState(() {});
+        });
+      });
     } catch (e) {
       print('connect: error => ' + e.toString());
       _localRenderer.srcObject = null;
@@ -137,6 +133,7 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
       setState(() {
         _connecting = false;
       });
+      micVolumplugin.stopCheckVolume();
     } catch (e) {
       print(e.toString());
     }
@@ -150,27 +147,34 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
     await Helper.switchCamera(videoTrack);
   }
 
+  void _toggleMute() {
+    if (_localStream != null) {
+      final audioTrack = _localStream!.getAudioTracks().first;
+
+      setState(() {
+        _isMuted = !_isMuted;
+        audioTrack.enabled = !_isMuted;
+        if (_isMuted) {
+          timer?.cancel();
+          micVolumplugin.stopCheckVolume();
+        } else {
+          micVolumplugin.startCheckVolume().then((_) {
+            timer = Timer.periodic(Duration(milliseconds: 100), (e) async {
+              print('Get volume');
+              _volumeLevel =
+                  await micVolumplugin.getMicVolume() ?? _volumeLevel;
+              setState(() {});
+            });
+          });
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('WHIP Publish Sample'), actions: <Widget>[
-        if (!_connecting)
-          IconButton(
-            icon: Icon(Icons.qr_code_scanner_sharp),
-            onPressed: () async {
-              if (!WebRTC.platformIsDesktop) {
-                /// only support mobile for now
-                Future future = Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => QRViewExample()));
-                future.then((value) {
-                  print('QR code result: $value');
-                  this.setState(() {
-                    _serverController.text = value;
-                  });
-                });
-              }
-            },
-          ),
+      appBar: AppBar(title: Text('Stream'), actions: <Widget>[
         if (_connecting)
           IconButton(
             icon: Icon(Icons.switch_video),
@@ -179,51 +183,40 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
       ]),
       body: OrientationBuilder(
         builder: (context, orientation) {
-          return Column(children: <Widget>[
-            Column(children: <Widget>[
-              FittedBox(
-                child: Text(
-                  '${stateStr}',
-                  textAlign: TextAlign.left,
-                ),
-              ),
-              if (!_connecting)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10.0, 18.0, 10.0, 0),
-                  child: Align(
-                    child: Text('WHIP URI:'),
-                    alignment: Alignment.centerLeft,
-                  ),
-                ),
-              if (!_connecting)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 0),
-                  child: TextFormField(
-                    controller: _serverController,
-                    keyboardType: TextInputType.text,
-                    textAlign: TextAlign.center,
-                    decoration: InputDecoration(
-                      contentPadding: EdgeInsets.all(10.0),
-                      border: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.black12)),
+          return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                if (_connecting)
+                  Center(
+                    child: SizedBox(
+                      height: 1,
+                      width: 1,
+                      child: Container(
+                        margin: EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 0.0),
+                        decoration: BoxDecoration(color: Colors.black54),
+                        child: RTCVideoView(_localRenderer,
+                            mirror: true,
+                            objectFit: RTCVideoViewObjectFit
+                                .RTCVideoViewObjectFitCover),
+                      ),
                     ),
                   ),
+                if (_connecting)
+                  VolumeIndicator(
+                    isMute: !(_volumeLevel >= 0 && !_isMuted),
+                    volumeLevel: _volumeLevel,
+                  ),
+                IconButton(
+                  splashRadius: 30,
+                  color: Colors.cyan[800],
+                  icon: Icon(
+                    _isMuted ? Icons.mic_off : Icons.mic,
+                    size: 30,
+                  ),
+                  onPressed: _toggleMute,
                 )
-            ]),
-            if (_connecting)
-              SizedBox(
-                height: 1,
-                width: 1,
-                child: Container(
-                  margin: EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 0.0),
-                  decoration: BoxDecoration(color: Colors.black54),
-                  child: RTCVideoView(_localRenderer,
-                      mirror: true,
-                      objectFit:
-                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
-                ),
-              )
-          ]);
+              ]);
         },
       ),
       floatingActionButton: FloatingActionButton(
@@ -232,5 +225,130 @@ class _WhipPublishSampleState extends State<WhipPublishSample> {
         child: Icon(_connecting ? Icons.call_end : Icons.phone),
       ),
     );
+  }
+}
+
+class VolumeIndicator extends StatefulWidget {
+  final bool isMute;
+  final double volumeLevel;
+  const VolumeIndicator(
+      {super.key, required this.isMute, required this.volumeLevel});
+  @override
+  _VolumeIndicatorState createState() => _VolumeIndicatorState();
+}
+
+class _VolumeIndicatorState extends State<VolumeIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (!widget.isMute) {
+      _controller = AnimationController(
+        duration: const Duration(seconds: 2),
+        vsync: this,
+      )..repeat();
+      _animation = Tween<double>(begin: 0, end: 100).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      );
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant VolumeIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isMute == true) {
+      _controller.reset();
+      _controller.stop();
+    } else {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            CustomPaint(
+              painter: VolumePainter(_animation.value),
+              child: SizedBox(
+                width: 200,
+                height: 200,
+              ),
+            ),
+            AnimatedContainer(
+              curve: Curves.easeInOut,
+              duration: Duration(milliseconds: 300),
+              height: widget.isMute ? 100 : 100 + (100 * widget.volumeLevel),
+              width: widget.isMute ? 100 : 100 + (100 * widget.volumeLevel),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.grey.withOpacity(0.2),
+              ),
+            ),
+            AnimatedContainer(
+              curve: Curves.easeInOut,
+              duration: Duration(milliseconds: 300),
+              height: widget.isMute ? 100 : 100 + (40 * widget.volumeLevel),
+              width: widget.isMute ? 100 : 100 + (40 * widget.volumeLevel),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.grey.withOpacity(0.6),
+              ),
+            ),
+            Container(
+              height: 100,
+              width: 100,
+              alignment: Alignment.center,
+              decoration:
+                  BoxDecoration(shape: BoxShape.circle, color: Colors.pink),
+              child: Text(
+                "M",
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+}
+
+class VolumePainter extends CustomPainter {
+  final double value;
+
+  VolumePainter(this.value);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.greenAccent
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    final radius = value;
+    canvas.drawCircle(size.center(Offset.zero), radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) {
+    return true;
   }
 }

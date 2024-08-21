@@ -10,12 +10,17 @@ dependencies:
   cupertino_icons: ^1.0.0
   flutter:
     sdk: flutter
+  flutter_sound: ^9.2.13
   flutter_whip:
     path: ../
   lints: ^4.0.0
+  path_provider: ^2.1.4
   qr_code_scanner: ^1.0.1
   shared_preferences: ^2.0.5
-
+  mic_volume:
+    git:
+      url: https://github.com/ManhVu99/mic_volume.git
+      ref: main 
 dev_dependencies:
   flutter_test:
     sdk: flutter
