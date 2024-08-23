@@ -21,9 +21,9 @@ const K_DEFAULT_BIRATE = 36000;
 const K_LOCAL_MEDIA_CONTRAINT = <String, dynamic>{
   "audio": {
     "channelCount": 1,
-    "echoCancellation": false, // Tắt chức năng loại bỏ tiếng vang
-    "autoGainControl": false, // Tắt chức năng giảm tiếng ồn
-    "noiseSuppression": false, // Tắt chức năng điều chỉnh âm lượng tự động
+    "echoCancellation": true, // Tắt chức năng loại bỏ tiếng vang
+    "autoGainControl": true, // Tắt chức năng giảm tiếng ồn
+    "noiseSuppression": true, // Tắt chức năng điều chỉnh âm lượng tự động
   },
   // "video": false
 };
